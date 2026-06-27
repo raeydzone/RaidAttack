@@ -1,0 +1,67 @@
+{
+  "namespace": "server_form",
+
+  "_comment": "Raid Attack /ra menu skin (reverted to the proven approach): the logo banner on top of Mojang's vanilla vertical button list — so clicks always route correctly. We redefine ONLY long_form (to make the dialog ~20% taller, killing the main-menu scrollbar) and long_form_scrolling_content (logo banner + label, tight spacing, then the vanilla buttons panel unchanged). No PNG/grid overlay. Fallback: ui/server_form.list.json.",
+
+  "raidattack_logo_image": {
+    "type": "image",
+    "texture": "textures/ui/raidattack_logo",
+    "size": [ "100%", 40 ],
+    "keep_ratio": true,
+    "bilinear": true,
+    "anchor_from": "top_middle",
+    "anchor_to": "top_middle"
+  },
+
+  "_comment_height": "Vanilla long_form is [225,200]; bumped height to 220 so the banner + 4 buttons fit without a scrollbar.",
+  "long_form": {
+    "$title_panel": "common_dialogs.standard_title_label",
+    "$title_size": [ "100% - 15px", 10 ],
+    "$title_max_size": [ "100% - 15px", 10 ],
+    "size": [ 225, 220 ],
+    "$text_name": "#title_text",
+    "$title_text_binding_type": "none",
+    "$child_control": "server_form.long_form_panel",
+    "layer": 2
+  },
+
+  "long_form_scrolling_content": {
+    "type": "stack_panel",
+    "size": [ "100% - 4px", "100%c" ],
+    "orientation": "vertical",
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "controls": [
+      { "ra_logo@server_form.raidattack_logo_image": {} },
+      {
+        "label_offset_panel": {
+          "type": "panel",
+          "size": [ "100%", "100%c" ],
+          "controls": [
+            {
+              "main_label": {
+                "type": "label",
+                "offset": [ 2, 0 ],
+                "color": "$main_header_text_color",
+                "size": [ "100%", "default" ],
+                "anchor_from": "top_left",
+                "anchor_to": "top_left",
+                "text": "#form_text"
+              }
+            }
+          ]
+        }
+      },
+      { "padding": { "type": "panel", "size": [ "100%", 1 ] } },
+      {
+        "wrapping_panel": {
+          "type": "panel",
+          "size": [ "100%", "100%c" ],
+          "controls": [
+            { "long_form_dynamic_buttons_panel@server_form.long_form_dynamic_buttons_panel": {} }
+          ]
+        }
+      }
+    ]
+  }
+}

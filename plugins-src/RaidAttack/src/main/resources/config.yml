@@ -1,0 +1,70 @@
+# RaidAttack configuration.
+#
+# Note: whether a base's turrets also target hostile mobs is NOT set here — it's
+# per-base, toggled in-game by the claim owner with:
+#   /HomeSystem turret attackmobs <on|off>     (defaults to on)
+
+# Run raider path REPLANS on a background worker pool (off the main server thread)
+# so the server's spare CPU cores do the A* search. The first path for each raider
+# is always computed synchronously (so it never freezes); only mid-route replans go
+# off-thread. Set false to force the old fully-synchronous pathfinding.
+async_pathfinding: true
+
+# World border (blocks, square, centred on 0,0). The Nether border is automatically set to
+# this / 8 so the 8:1 overworld<->nether ratio holds and players can't portal "behind" the
+# overworld edge. 0 = no border (infinite). Applied on enable and whenever a world loads.
+worldborder-size: 10000
+
+# Master switch for all developer/testing commands and subcommands (/HomeSystem dev …,
+# /raid dev …). Default OFF for production. When off, every dev command is fully disabled —
+# it does nothing AND is hidden from tab-completion. When on, dev commands are still gated to
+# RaidAttack OWNERS (via the rights system; see world.server_rights) — never plain ops.
+dev_mode: false
+
+# ---------------------------------------------------------------------------
+# Season events
+# ---------------------------------------------------------------------------
+# Each event unlocks a piece of content at the moment below, and is shown on
+# the /event board. Listed in the same order they fire in-game. Edit a date
+# to reschedule that event.
+#
+#   * Times are UTC (24-hour clock), regardless of the server's own timezone.
+#   * Format:  YYYY-MM-DD HH:MM        e.g.  2026-07-01 10:00
+#     Also accepted: with seconds (2026-07-01 10:00:00), ISO "T"
+#     (2026-07-01T10:00), or the display style "01 July 2026 10:00".
+#   * server_start is a display-only anchor on the board (no gameplay effect).
+#     raiding / nether / the_end actually gate that content (with no bypass).
+#   * A missing or unreadable value falls back to the built-in default and
+#     logs a warning, so a typo can never brick the season.
+events:
+  server_start: 2026-07-01 10:00
+  raiding: 2026-07-07 10:00
+  nether: 2026-07-13 10:00
+  the_end: 2026-07-26 10:00
+
+# ---------------------------------------------------------------------------
+# Login gate (Discord-gated auth)
+# ---------------------------------------------------------------------------
+# Accounts are created ONLY via the Discord bot (/raidattack register). The plugin just
+# validates: eligible players spawn frozen until they run /login <password>; everyone else is
+# denied at connect. Set enabled: false to open the server (e.g. for offline dev testing).
+#
+# SECURITY: the database password below is a PLACEHOLDER. Put the real `ra_plugin` password only
+# in the runtime config at server/plugins/RaidAttack/config.yml (which is gitignored) — never
+# commit a real credential into this bundled template.
+auth:
+  enabled: true
+  crossplay_enabled: false # allow Bedrock (Floodgate) logins. Keep false until the Floodgate link
+                           # provider is in place — otherwise a Bedrock client joins on its own
+                           # Floodgate UUID and bypasses the password gate.
+  limbo_seconds: 30        # time to type /login before a kick (a no-show counts as 1 attempt)
+  max_attempts: 5          # failed attempts within window_minutes ...
+  window_minutes: 60       # ... rolling window ...
+  lockout_minutes: 60      # ... triggers this long a lockout (an "ineligible" hold)
+  database:
+    host: 127.0.0.1
+    port: 5432
+    database: raidattack
+    user: ra_plugin
+    password: "REPLACE_IN_RUNTIME_CONFIG"
+    pool_size: 4

@@ -1,0 +1,30 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Raid Attack",
+    "description": "Official Bedrock UI",
+    "uuid": "8e3529e3-72dd-429b-a830-c6b4581c2bcd",
+    "version": [
+      26,
+      1,
+      12
+    ],
+    "min_engine_version": [
+      1,
+      21,
+      0
+    ]
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "description": "JSON UI overrides",
+      "uuid": "d0b1d820-f0e5-4129-a58b-99429ed07222",
+      "version": [
+        26,
+        1,
+        12
+      ]
+    }
+  ]
+}

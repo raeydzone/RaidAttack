@@ -1,0 +1,13 @@
+# Gradle / build output
+plugins-src/*/build/
+plugins-src/*/.gradle/
+.gradle/
+
+# Live Paper server (this is a symlink to the running instance at /home/raidattack,
+# i.e. runtime state, not source — the build only needs it locally to compile against
+# the server's extracted libraries/ and Citizens jar).
+/server
+
+# Logs & OS cruft
+*.log
+.DS_Store

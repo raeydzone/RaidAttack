@@ -1,0 +1,61 @@
+{
+  "namespace": "server_form",
+
+  "_comment": "Raid Attack: add a logo banner to the top of every SimpleForm (the /ra menu screens). We redefine ONLY long_form_scrolling_content, copied verbatim from the vanilla server_form.json, with our logo image + padding prepended — so the rest of the form renders exactly as vanilla.",
+
+  "raidattack_logo_image": {
+    "type": "image",
+    "texture": "textures/ui/raidattack_logo",
+    "size": [ "100%", 52 ],
+    "keep_ratio": true,
+    "bilinear": true,
+    "anchor_from": "top_middle",
+    "anchor_to": "top_middle"
+  },
+
+  "long_form_scrolling_content": {
+    "type": "stack_panel",
+    "size": [ "100% - 4px", "100%c" ],
+    "orientation": "vertical",
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "controls": [
+      { "ra_logo@server_form.raidattack_logo_image": {} },
+      { "ra_logo_padding": { "type": "panel", "size": [ "100%", 4 ] } },
+      {
+        "label_offset_panel": {
+          "type": "panel",
+          "size": [ "100%", "100%c" ],
+          "controls": [
+            {
+              "main_label": {
+                "type": "label",
+                "offset": [ 2, 2 ],
+                "color": "$main_header_text_color",
+                "size": [ "100%", "default" ],
+                "anchor_from": "top_left",
+                "anchor_to": "top_left",
+                "text": "#form_text"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "padding": {
+          "type": "panel",
+          "size": [ "100%", 4 ]
+        }
+      },
+      {
+        "wrapping_panel": {
+          "type": "panel",
+          "size": [ "100%", "100%c" ],
+          "controls": [
+            { "long_form_dynamic_buttons_panel@server_form.long_form_dynamic_buttons_panel": {} }
+          ]
+        }
+      }
+    ]
+  }
+}

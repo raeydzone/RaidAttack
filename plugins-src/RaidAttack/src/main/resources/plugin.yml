@@ -1,0 +1,65 @@
+name: RaidAttack
+# Version is injected at build time from build.gradle.kts (the single source of truth).
+# Never hard-code it here — see the processResources task in build.gradle.kts.
+version: '@pluginVersion@'
+main: com.raeyd.raidattack.HomeSystemPlugin
+api-version: '1.21'
+author: Raeyd
+description: Claim zones, turrets, alliances, chat formatting, and raids for RaidAttack.
+softdepend: [Citizens, floodgate, SkinsRestorer]
+
+# Runtime libraries for the login gate, downloaded by Paper from Maven Central on load (no
+# shadow jar). Keep in lockstep with build.gradle.kts.
+libraries:
+  - org.postgresql:postgresql:42.7.4
+  - com.zaxxer:HikariCP:5.1.0
+  - org.mindrot:jbcrypt:0.4
+
+commands:
+  login:
+    description: Log in to your Raid Attack account (Discord-gated).
+    usage: /login <password>
+  homesystem:
+    description: Manage your home claim.
+    usage: /HomeSystem <claim|add|remove|unclaim|info|show|current|turret|teleport|dev> [args]
+    aliases: [hs, homeprotection]
+  alliance:
+    description: Manage alliances (create, destruct, join, accept, color, change_name, leave, info).
+    usage: /alliance <create|destruct|color|change_name|join|accept|pending_accepts|leave|info|kick> [args]
+  a:
+    description: Toggle alliance-only chat, or send a one-shot alliance-only message.
+    usage: /a [message]
+  raid:
+    description: Open the raid target list. Use "/raid dev" to act as the dev fake-player.
+    usage: /raid [dev]
+  ra:
+    description: RaidAttack utility + admin commands (armor indicator, rights system, quests).
+    usage: /ra <armor_durability_indicator|rights|quests> [args]
+    aliases: [raidattack]
+  event:
+    description: Show the season event timeline (UTC unlock dates for raiding, nether, the end).
+    usage: /event
+    aliases: [events]
+
+permissions:
+  homesystem.use:
+    description: Use the /HomeSystem command.
+    default: true
+  homesystem.bypass:
+    description: Never get gamemode-swapped by foreign zones. Must be explicitly granted —
+      ops are NOT auto-granted, so a server admin can still test zone enforcement on themselves.
+    default: false
+  homesystem.dev:
+    description: Use /HomeSystem dev subcommands (testing only).
+    default: op
+  raidattacks2.alliance:
+    description: Use /alliance and /a.
+    default: true
+  raidattacks2.raid:
+    description: Use /raid to start raids against other claims.
+    default: true
+  homesystem.events.bypass:
+    description: Bypass season locks — enter a locked Nether/End and raid before raiding unlocks.
+      NOT granted to OPs by default (so an op playing normally is locked exactly like everyone else
+      and can't accidentally leak content); must be granted explicitly to a dedicated test account.
+    default: false
