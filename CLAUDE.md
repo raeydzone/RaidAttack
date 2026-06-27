@@ -1,8 +1,9 @@
 # RaidAttack
 
-Codebase for the **RaidAttack** Paper plugin plus the local Minecraft micro-server used to
-develop and test it. The runnable server lives at `/home/raidattack` and is reachable from
-here as the `server/` symlink.
+**RaidAttack** — a Paper server plugin (Java + Bedrock).
+
+This repo is the plugin codebase plus the local Minecraft micro-server used to develop and test
+it; the runnable server lives at `/home/raidattack`, reachable here as the `server/` symlink.
 
 ## Scope (read first)
 
@@ -24,13 +25,14 @@ plugin's Bedrock menu. The general art-asset prohibition still applies everywher
 
 ## Stack
 
-- **Server software:** Paper `26.1.2` build #64 (`server/paper-26.1.2-64.jar`).
-- **Minecraft version:** 26.1.2 (pinned — Citizens does not yet stably support 26.2; Citizens
-  `2.0.42` / b4180 supports up to 26.1.x / 1.21.10).
-- **Plugins:** third-party Citizens + SkinsRestorer, plus our first-party `RaidAttack` plugin.
-  The third-party set (no pinned versions — they track the MC/Paper version) is listed in
-  [`docs/plugin-set.md`](docs/plugin-set.md). Citizens is the version-sensitive one: `2.0.42`/
-  b4180 supports up to 26.1.x / 1.21.10, which is why the server is pinned to 26.1.2.
+- **Server software:** Paper — the build jar in `server/` (`server/paper-*.jar`). The exact
+  MC/Paper version it targets is whatever `build.gradle.kts` (`version`) says; don't re-pin the
+  number here (see [Code quality](#code-quality)).
+- **Plugins:** third-party Citizens + SkinsRestorer, plus our first-party `RaidAttack` plugin
+  (third-party set in [`docs/plugin-set.md`](docs/plugin-set.md), no pinned versions — they
+  track the MC/Paper version). **Citizens is the version-sensitive one** and lags the latest
+  Minecraft major, which is why MC/Paper stays on the line Citizens currently supports — so when
+  bumping the version, verify Citizens first.
 - **Java (Linux / this box):**
   - **JDK 25** (`/usr/lib/jvm/java-25-openjdk-amd64`) — required to **run** Paper 26.1+
     ("Minecraft 26.1 and newer requires running the server with Java 25 or above") and is the
@@ -43,8 +45,9 @@ plugin's Bedrock menu. The general art-asset prohibition still applies everywher
 
 - **Name:** `RaidAttack` (was `RaidAttackS2`; was `HomeSystem` before that — `onEnable` still
   migrates a legacy `plugins/HomeSystem/` data folder forward).
-- **Version convention:** the plugin version **mirrors the Minecraft version it targets** —
-  currently `26.1.2`. Bump it in lockstep with the server's MC/Paper version.
+- **Version convention:** the plugin version **mirrors the Minecraft version it targets**, set in
+  one place (`build.gradle.kts` `version`, injected into `plugin.yml` at build) — bump it there in
+  lockstep with the server's MC/Paper version; don't hard-code the number elsewhere.
 - **Main class:** `com.raeyd.raidattack.HomeSystemPlugin` (kept its legacy class name; only
   the package was renamed during the cleanup).
 - **Source layout** (`plugins-src/RaidAttack/src/main/java/com/raeyd/raidattack/`):
@@ -62,6 +65,23 @@ plugin's Bedrock menu. The general art-asset prohibition still applies everywher
   core/          # plugin-wide infra: compute pool, chat, NMS reflection, etc. (6)
   ```
   Permission nodes are still `homesystem.*` (player-facing identifiers — do **not** rename).
+
+## Code quality
+
+Write **clean, readable code** — that is the bar; favour clarity over cleverness.
+
+- **Names — long and clear over short and cryptic, prefixed by subsystem.** A name should say
+  where it belongs: turret-system code starts with `turret…`, raid-system with `raid…`, claims
+  with `claim…`, alliances with `alliance…`, quests with `quest…`, and so on. Prefer a slightly
+  longer name that reads plainly over a short abbreviation whose meaning isn't obvious.
+- **Comments — short, and only where they earn their place.** A one-liner on what a function does,
+  or a note on code written a **specific, non-obvious way because it breaks otherwise**. Some code
+  looks illogical at first glance but is deliberately exact — flag those so nobody "simplifies"
+  them into a bug. Don't narrate the obvious.
+- **No volatile values in docs.** Never hard-code things that change — the current MC / plugin /
+  Paper version above all — in this file or other docs. The single source of truth is
+  `build.gradle.kts` (`version`). Refer to "the current version" generally; repeating a number in
+  several places just goes stale and invites a needless "fix" + push.
 
 ## Server (`/home/raidattack`, symlinked as `server/`)
 
@@ -83,20 +103,20 @@ JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew deploy
 `deploy` compiles (toolchain JDK 25) and copies `RaidAttack.jar` into `server/plugins/`. The
 build compiles against `server/libraries/*.jar` (Paper's extracted libraries) and the Citizens
 jar — both `compileOnly`. If `server/libraries/` is missing, regenerate it without a full boot:
-`java -Dpaperclip.patchonly=true -jar server/paper-26.1.2-64.jar` (JDK 25).
+`java -Dpaperclip.patchonly=true -jar server/paper-*.jar` (JDK 25).
 
 **Every plugin compile is followed by a redeploy AND a server restart** — Bukkit only loads
 jars at startup, so the running server keeps executing old code until restarted. This full
 compile → deploy → restart cycle is the assistant's job by default; don't stop at "build
 successful". To restart: `kill -TERM <paper pid>` (Paper shuts down cleanly; the dev world is
 disposable), wait for exit, then `server/start.sh`. Confirm the boot with the
-`[RaidAttack] Enabling RaidAttack v26.1.2` and `Done (...)` log lines.
+`[RaidAttack] Enabling RaidAttack v<version>` and `Done (...)` log lines.
 
 ## Gotchas
 
-- Don't upgrade Paper past 26.1.x while Citizens hasn't shipped 26.2 support. Keep MC version,
-  Paper build, Citizens build, and the plugin version aligned; Citizens has historically been
-  the blocker, so verify it first when bumping MC.
+- Don't upgrade Paper to a Minecraft major Citizens doesn't yet support. Keep MC version, Paper
+  build, Citizens build, and the plugin version aligned; Citizens has historically been the
+  blocker, so verify it first when bumping MC.
 - Don't run Gradle on JDK 25 (the 9.0.0 daemon won't start) and don't run Paper on JDK 21
   (Paper 26.1+ refuses anything below 25).
 - First boot generates `server.properties`, `bukkit.yml`, `spigot.yml`, `paper-global.yml`,
