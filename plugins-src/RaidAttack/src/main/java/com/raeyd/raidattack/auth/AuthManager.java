@@ -123,6 +123,20 @@ public final class AuthManager {
         player.removePotionEffect(PotionEffectType.SLOWNESS);
     }
 
+    /**
+     * Re-apply the limbo freeze potions after a respawn. Edge case: a player who dies (e.g. AFK),
+     * quits on the death screen, then rejoins is back in limbo but still dead — pressing respawn
+     * makes vanilla wipe ALL potion effects, so the blindness + slowness vanish even though they're
+     * still gated (can't move/chat, gets kicked). Not an exploit, just the visible freeze missing.
+     * Re-applied next tick so it lands after the respawn finishes; no-op once authenticated.
+     */
+    public void reapplyLimboEffectsAfterRespawn(Player player) {
+        if (!isInLimbo(player.getUniqueId())) return;
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (player.isOnline() && isInLimbo(player.getUniqueId())) applyLimboEffects(player);
+        });
+    }
+
     /** Main thread (from /login). Verify off-thread, then resolve on the main thread. */
     public void attemptLogin(Player player, String password) {
         Session s = sessions.get(player.getUniqueId());

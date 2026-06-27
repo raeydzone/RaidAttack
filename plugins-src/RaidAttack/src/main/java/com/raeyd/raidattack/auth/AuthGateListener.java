@@ -35,6 +35,7 @@ import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
@@ -212,6 +213,13 @@ public final class AuthGateListener implements Listener {
         pending.remove(id);
         onlineAccounts.remove(id);                      // release the single session
         manager.handleQuit(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        // Vanilla respawn wipes all potion effects — re-apply the limbo freeze if still gated
+        // (covers: died AFK, quit on the death screen, rejoined, then pressed respawn).
+        manager.reapplyLimboEffectsAfterRespawn(event.getPlayer());
     }
 
     // ---- the freeze: cancel everything for a player still in limbo -------------------------
