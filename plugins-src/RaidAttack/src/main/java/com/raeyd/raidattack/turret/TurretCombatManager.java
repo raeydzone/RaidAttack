@@ -1146,16 +1146,23 @@ public final class TurretCombatManager {
                 // Friendly fire → heal instead of damage. Splash on owner/friends within the
                 // 0.75 radius grants Regeneration scaled by turret level (3/4/5 s for L1/L2/L3).
                 if (spawn != null && spawn.isMember(p.getUniqueId())) {
-                    int secs = TurretCombatTuning.friendlyRegenSeconds(proj.level);
-                    p.addPotionEffect(new org.bukkit.potion.PotionEffect(
-                            org.bukkit.potion.PotionEffectType.REGENERATION,
-                            secs * 20, 0, true, true, true));
+                    applyFriendlySplashHeal(p, proj.level);
                     if (plugin.getQuests() != null) {
                         plugin.getQuests().complete(p.getUniqueId(), Quest.TURRET_REGEN);
                     }
                     healed++;
                     continue;
                 }
+            }
+            // A turret must never harm a villager — they're a base's traders, and a shot clipping a
+            // wall shouldn't let the splash cull them. Give a villager the SAME friendly heal a base
+            // member gets, whoever's claim it's in. AbstractVillager = Villager + WanderingTrader only;
+            // a ZombieVillager is a Zombie (a hostile raid mob), so it is NOT matched here and still
+            // takes damage as before.
+            if (le instanceof org.bukkit.entity.AbstractVillager) {
+                applyFriendlySplashHeal(le, proj.level);
+                healed++;
+                continue;
             }
             // Attribute the damage to the turret's shulker NPC if we found one — that's what
             // lets PlayerDeathListener rewrite the death message to credit the turret.
@@ -1215,6 +1222,16 @@ public final class TurretCombatManager {
                 proj.firingSlot + 1, damaged, healed));
         proj.markedForCleanup = true;
         bullet.remove();
+    }
+
+    /** Grant the friendly turret splash-heal: Regeneration scaled by turret level (3/4/5 s for
+     *  L1/L2/L3) — the buff base members get on a friendly splash, also used to make turrets heal
+     *  rather than harm villagers. */
+    private void applyFriendlySplashHeal(LivingEntity le, int level) {
+        int secs = TurretCombatTuning.friendlyRegenSeconds(level);
+        le.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.REGENERATION,
+                secs * 20, 0, true, true, true));
     }
 
     /**
