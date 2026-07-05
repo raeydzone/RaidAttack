@@ -83,6 +83,15 @@ Write **clean, readable code** — that is the bar; favour clarity over cleverne
   `build.gradle.kts` (`version`). Refer to "the current version" generally; repeating a number in
   several places just goes stale and invites a needless "fix" + push.
 
+## Working style
+
+- **Parallelize with sub-agents when a task splits cleanly.** If work separates into independent
+  files/areas (e.g. the Discord bot vs. the plugin, DB schema vs. Java code, or Bedrock-pack asset
+  generation vs. code), launch sub-agents for the separable parts and work the rest yourself — it
+  speeds the whole task up. Give each agent an exact file scope + contract so agents never edit
+  the same file concurrently. Same for research: open questions (Paper/Geyser APIs, external docs)
+  go to research agents in the background while implementation continues.
+
 ## Server (`/home/raidattack`, symlinked as `server/`)
 
 The runnable Paper instance. Key `server.properties`: **offline mode** (`online-mode=false`),
