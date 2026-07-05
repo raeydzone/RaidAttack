@@ -390,7 +390,9 @@ public final class HomeSystemPlugin extends JavaPlugin {
                     // A linked Bedrock player is seen as Java, so re-apply their real Bedrock skin via
                     // SkinsRestorer (else they'd be skinless — the offline RID has no Mojang skin).
                     if (getServer().getPluginManager().getPlugin("SkinsRestorer") != null) {
-                        getServer().getPluginManager().registerEvents(new com.raeyd.raidattack.auth.BedrockSkinSync(this), this);
+                        com.raeyd.raidattack.auth.BedrockSkinSync skinSync = new com.raeyd.raidattack.auth.BedrockSkinSync(this);
+                        getServer().getPluginManager().registerEvents(skinSync, this);
+                        skinSync.registerSkinRefreshHook();
                         getLogger().info("Auth: Bedrock skin sync enabled (GeyserMC → SkinsRestorer).");
                     } else {
                         getLogger().warning("Auth: SkinsRestorer not installed — linked Bedrock players will appear skinless.");
