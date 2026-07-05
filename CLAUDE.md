@@ -112,6 +112,20 @@ successful". To restart: `kill -TERM <paper pid>` (Paper shuts down cleanly; the
 disposable), wait for exit, then `server/start.sh`. Confirm the boot with the
 `[RaidAttack] Enabling RaidAttack v<version>` and `Done (...)` log lines.
 
+## Version control (commit policy)
+
+**Every change to this repo is committed AND pushed to GitHub** — treat it as part of finishing
+the work, not an optional extra. After the compile → deploy → restart cycle for a change, commit
+the source and push it to the private repo (`github.com/raeydzone/RaidAttack`) so the repo always
+matches what's deployed. Don't batch unrelated changes into one commit; keep each commit scoped to
+one logical change with a clear message.
+
+The push mechanics (commit identity **`RaeydZone <raeydzone@gmail.com>`**, `gh` logged in as
+`raeydzone`, push only from **inside** `CODE_PROJECTS/RaidAttack` — never from `/home`) live in the
+mother-folder [`/home/CLAUDE.md`](../../CLAUDE.md) → "GitHub push". Only source is tracked; the
+runnable server under `server/` (worlds, logs, third-party plugin configs like SkinsRestorer's
+`config.yml`, `server.properties`) is runtime, not committed here.
+
 ## Gotchas
 
 - Don't upgrade Paper to a Minecraft major Citizens doesn't yet support. Keep MC version, Paper
