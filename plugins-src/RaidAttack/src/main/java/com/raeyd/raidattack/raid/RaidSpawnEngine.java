@@ -1239,6 +1239,11 @@ public final class RaidSpawnEngine {
      *   <li>Deployed turret NPCs in the zone.</li>
      * </ul>
      *
+     * <p>Every target except turrets additionally requires line of sight: if no block-free line
+     * exists from the raider to the candidate (player hiding in a house / hole), it is skipped —
+     * so the raider falls back to the turret even when the hidden player is closer. Re-evaluated
+     * every AI tick, so a target that breaks LOS mid-chase is dropped on the next tick.
+     *
      * <p>Critically, Citizens player NPCs are filtered out of the player bucket. Raiders are
      * themselves Citizens player-entity NPCs, so without this filter every raider would see
      * every other raider (and itself) as a hostile target — symptom: {@code tgt=dev's Raider
@@ -1270,6 +1275,10 @@ public final class RaidSpawnEngine {
             // lockstep: a defender who happens to be friended/allied to the attacker (e.g. the dev
             // base tester) is still a valid target — raiders won't ignore the person they're raiding.
             if (plugin.getRaidManager().isRaiderAlly(raid, p.getUniqueId())) continue;
+            // LOS gate: a player the raider can't draw a block-free line to (hiding in a house /
+            // hole) is NOT a valid target — the raider goes for the turret instead. Turrets below
+            // are deliberately exempt so a walled base still gets sieged.
+            if (!self.hasLineOfSight(p)) continue;
             double dSq = p.getLocation().distanceSquared(self.getLocation());
             if (dSq < nearestASq) { nearestASq = dSq; nearestA = p; }
         }
@@ -1303,6 +1312,8 @@ public final class RaidSpawnEngine {
             if (le instanceof org.bukkit.entity.Monster) continue;       // skip hostile mobs
             if (citizensLoaded && CitizensAPI.getNPCRegistry().isNPC(le)) continue;
             if (!zone.contains(le.getLocation())) continue;
+            // Same LOS gate as Tier A: no block-free line → not a target (turrets stay exempt).
+            if (!self.hasLineOfSight(le)) continue;
             double dSq = le.getLocation().distanceSquared(self.getLocation());
             if (dSq < nearestBSq) { nearestBSq = dSq; nearestB = le; }
         }
