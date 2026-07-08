@@ -47,6 +47,7 @@ public final class RaidAttackCommand implements CommandExecutor, TabCompleter {
             case "menu" -> openMenu(sender, args);
             case "armor_durability_indicator", "armor", "adi" -> handleArmorIndicator(sender, args);
             case "rights" -> handleRights(sender, args);
+            case "pvp" -> handlePvp(sender, args);
             case "quests", "quest", "q" -> handleQuests(sender);
             default -> sendHelp(sender);
         }
@@ -179,7 +180,35 @@ public final class RaidAttackCommand implements CommandExecutor, TabCompleter {
         if (plugin.getRightsManager().canModerate(sender)) {
             sender.sendMessage(ChatColor.YELLOW + " /ban <player> <duration> <reason>"
                     + ChatColor.GRAY + "   /kick <player> <reason>   /unban <player>");
+            sender.sendMessage(ChatColor.YELLOW + " /ra pvp arm"
+                    + ChatColor.GRAY + " - (admin) flag your next quit as tactical leaving, for testing.");
         }
+    }
+
+    // -- /ra pvp (admin test tooling) ------------------------------------------
+
+    /**
+     * {@code /ra pvp arm} — admin-only (rights system, same family as {@code /ra rights}):
+     * one-shot toggle; while armed, YOUR next quit is treated as a tactical leave even without
+     * active PvP mode, so the whole pipeline (flag → DB row → 5/8-min Discord DMs → rejoin
+     * freeze → execution) can be tested end to end on yourself.
+     */
+    private void handlePvp(CommandSender sender, String[] args) {
+        RightsManager rights = plugin.getRightsManager();
+        if (rights == null || !rights.isAdmin(sender)) { noPerm(sender); return; }
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(ChatColor.RED + "Player-only (it arms YOUR next quit).");
+            return;
+        }
+        if (args.length < 2 || !args[1].equalsIgnoreCase("arm")) {
+            sender.sendMessage(ChatColor.YELLOW + "Usage: /ra pvp arm" + ChatColor.GRAY
+                    + " - toggle: treat your next quit as a tactical leave (testing).");
+            return;
+        }
+        boolean armed = plugin.getTacticalLeaves().toggleArmedTestQuit(player.getUniqueId());
+        sender.sendMessage(armed
+                ? ChatColor.GREEN + "Armed: your next quit will be flagged as tactical leaving (one-shot)."
+                : ChatColor.YELLOW + "Disarmed: your next quit is back to normal.");
     }
 
     private void sendRightsHelp(CommandSender sender) {
@@ -195,11 +224,15 @@ public final class RaidAttackCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return filter(List.of("menu", "armor_durability_indicator", "rights", "quests"), args[0]);
+            return filter(List.of("menu", "armor_durability_indicator", "rights", "pvp", "quests"), args[0]);
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
         if (sub.equals("armor_durability_indicator") || sub.equals("armor") || sub.equals("adi")) {
             if (args.length == 2) return filter(List.of("on", "off"), args[1]);
+            return Collections.emptyList();
+        }
+        if (sub.equals("pvp")) {
+            if (args.length == 2) return filter(List.of("arm"), args[1]);
             return Collections.emptyList();
         }
         if (sub.equals("rights")) {

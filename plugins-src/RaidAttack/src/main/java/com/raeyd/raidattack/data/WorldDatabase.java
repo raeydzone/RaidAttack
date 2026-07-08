@@ -167,6 +167,11 @@ public final class WorldDatabase {
         // Upgrade path for tables created before the expiry-time execution model.
         exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS inventory BYTEA");
         exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS executed BOOLEAN NOT NULL DEFAULT FALSE");
+        // Upgrade path for the PvP-mode rework: cumulative offline budget + which Discord
+        // warning thresholds (5 min / 8 min) already produced an alert row.
+        exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS offline_used_millis BIGINT NOT NULL DEFAULT 0");
+        exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS alerted_5 BOOLEAN NOT NULL DEFAULT FALSE");
+        exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS alerted_8 BOOLEAN NOT NULL DEFAULT FALSE");
         log.info("World schema ensured (gameplay tables).");
     }
 
@@ -682,16 +687,18 @@ public final class WorldDatabase {
 
     public record TacticalLeaveRow(UUID victimRid, String attackerName, UUID worldUuid,
                                    double x, double y, double z, long quitAtMillis,
-                                   byte[] inventory, boolean executed) {}
+                                   byte[] inventory, boolean executed,
+                                   long offlineUsedMillis, boolean alerted5, boolean alerted8) {}
 
     public void upsertTacticalLeave(TacticalLeaveRow row) {
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
-                INSERT INTO world.tactical_leaves (victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                INSERT INTO world.tactical_leaves (victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed, offline_used_millis, alerted_5, alerted_8)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT (victim_rid) DO UPDATE SET attacker_name = EXCLUDED.attacker_name,
                     world_uuid = EXCLUDED.world_uuid, x = EXCLUDED.x, y = EXCLUDED.y, z = EXCLUDED.z,
                     quit_at_millis = EXCLUDED.quit_at_millis, inventory = EXCLUDED.inventory,
-                    executed = EXCLUDED.executed
+                    executed = EXCLUDED.executed, offline_used_millis = EXCLUDED.offline_used_millis,
+                    alerted_5 = EXCLUDED.alerted_5, alerted_8 = EXCLUDED.alerted_8
                 """)) {
             ps.setObject(1, row.victimRid());
             ps.setString(2, row.attackerName());
@@ -700,6 +707,9 @@ public final class WorldDatabase {
             ps.setLong(7, row.quitAtMillis());
             ps.setBytes(8, row.inventory());
             ps.setBoolean(9, row.executed());
+            ps.setLong(10, row.offlineUsedMillis());
+            ps.setBoolean(11, row.alerted5());
+            ps.setBoolean(12, row.alerted8());
             ps.executeUpdate();
         } catch (SQLException e) { log.warning("world: upsertTacticalLeave failed for " + row.victimRid() + ": " + e.getMessage()); }
     }
@@ -707,14 +717,15 @@ public final class WorldDatabase {
     /** The pending tactical-leave row for a player, or null. */
     public TacticalLeaveRow loadTacticalLeave(UUID victimRid) {
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "SELECT attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed"
+                "SELECT attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed,"
+                        + " offline_used_millis, alerted_5, alerted_8"
                         + " FROM world.tactical_leaves WHERE victim_rid = ?")) {
             ps.setObject(1, victimRid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
                 return new TacticalLeaveRow(victimRid, rs.getString(1), rs.getObject(2, UUID.class),
                         rs.getDouble(3), rs.getDouble(4), rs.getDouble(5), rs.getLong(6),
-                        rs.getBytes(7), rs.getBoolean(8));
+                        rs.getBytes(7), rs.getBoolean(8), rs.getLong(9), rs.getBoolean(10), rs.getBoolean(11));
             }
         } catch (SQLException e) {
             log.warning("world: loadTacticalLeave failed for " + victimRid + ": " + e.getMessage());
@@ -727,13 +738,15 @@ public final class WorldDatabase {
         List<TacticalLeaveRow> out = new ArrayList<>();
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement(
-                "SELECT victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed"
+                "SELECT victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed,"
+                        + " offline_used_millis, alerted_5, alerted_8"
                         + " FROM world.tactical_leaves");
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 out.add(new TacticalLeaveRow(rs.getObject(1, UUID.class), rs.getString(2),
                         rs.getObject(3, UUID.class), rs.getDouble(4), rs.getDouble(5), rs.getDouble(6),
-                        rs.getLong(7), rs.getBytes(8), rs.getBoolean(9)));
+                        rs.getLong(7), rs.getBytes(8), rs.getBoolean(9),
+                        rs.getLong(10), rs.getBoolean(11), rs.getBoolean(12)));
             }
         } catch (SQLException e) { log.warning("world: loadAllTacticalLeaves failed: " + e.getMessage()); }
         return out;
@@ -746,6 +759,50 @@ public final class WorldDatabase {
             ps.setObject(1, victimRid);
             ps.executeUpdate();
         } catch (SQLException e) { log.warning("world: markTacticalLeaveExecuted failed for " + victimRid + ": " + e.getMessage()); }
+    }
+
+    /** Persist the cumulative offline budget a flagged player has burned (rejoin/refresh paths). */
+    public void updateTacticalLeaveOfflineUsed(UUID victimRid, long offlineUsedMillis) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "UPDATE world.tactical_leaves SET offline_used_millis = ? WHERE victim_rid = ?")) {
+            ps.setLong(1, offlineUsedMillis);
+            ps.setObject(2, victimRid);
+            ps.executeUpdate();
+        } catch (SQLException e) { log.warning("world: updateTacticalLeaveOfflineUsed failed for " + victimRid + ": " + e.getMessage()); }
+    }
+
+    /** Remember that the 5-min or 8-min Discord alert row was written (dedupes across restarts). */
+    public void markTacticalLeaveAlerted(UUID victimRid, int thresholdMinutes) {
+        String column = thresholdMinutes >= 8 ? "alerted_8" : "alerted_5";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "UPDATE world.tactical_leaves SET " + column + " = TRUE WHERE victim_rid = ?")) {
+            ps.setObject(1, victimRid);
+            ps.executeUpdate();
+        } catch (SQLException e) { log.warning("world: markTacticalLeaveAlerted failed for " + victimRid + ": " + e.getMessage()); }
+    }
+
+    /**
+     * Queue a Discord warning for the rAI bot: one row per crossed threshold in the BOT-owned
+     * {@code public.tactical_leave_alerts} table (the bot creates it and granted us INSERT).
+     * The bot polls unnotified rows, resolves rid → Discord user via {@code accounts}, and DMs.
+     * Returns false if the insert failed (e.g. the bot hasn't created the table yet).
+     */
+    public boolean insertTacticalLeaveAlert(UUID rid, String javaUsername, String opponentName,
+                                            long flaggedAtMillis, int thresholdMinutes) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO public.tactical_leave_alerts (rid, java_username, opponent_name, flagged_at, threshold_minutes)"
+                        + " VALUES (?, ?, ?, to_timestamp(? / 1000.0), ?)")) {
+            ps.setObject(1, rid);
+            ps.setString(2, javaUsername);
+            ps.setString(3, opponentName);
+            ps.setLong(4, flaggedAtMillis);
+            ps.setInt(5, thresholdMinutes);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            log.warning("world: insertTacticalLeaveAlert failed for " + rid + " (bot table missing/no grant?): " + e.getMessage());
+            return false;
+        }
     }
 
     public void deleteTacticalLeave(UUID victimRid) {

@@ -21,6 +21,7 @@ import com.raeyd.raidattack.combat.ArmorDurabilityManager;
 import com.raeyd.raidattack.combat.CombatBalanceListener;
 import com.raeyd.raidattack.combat.DamageTrackingListener;
 import com.raeyd.raidattack.combat.EndPhantomManager;
+import com.raeyd.raidattack.combat.PvpModeManager;
 import com.raeyd.raidattack.combat.TacticalLeaveManager;
 import com.raeyd.raidattack.combat.HappyGhastManager;
 import com.raeyd.raidattack.combat.WitherCombatManager;
@@ -96,6 +97,7 @@ public final class HomeSystemPlugin extends JavaPlugin {
     private RightsManager rightsManager;
     private ModerationService moderationService;
     private ArmorDurabilityManager armorDurability;
+    private PvpModeManager pvpMode;
     private TacticalLeaveManager tacticalLeaves;
     private HappyGhastManager happyGhasts;
     private QuestManager quests;
@@ -351,11 +353,18 @@ public final class HomeSystemPlugin extends JavaPlugin {
         // Active combat nerfs (mace/spear caps + crystal/anchor explosion rework).
         getServer().getPluginManager().registerEvents(new CombatBalanceListener(this), this);
 
-        // Combat-log ("tactical leaving") punishment — marks low-HP chased quitters; executes at
-        // the 10-min expiry (items drop at the quit spot), the next /login only wipes/pardons.
+        // PvP mode — pairwise >25-raw-damage / 5-min-window / 250-block tracking. Foundation for
+        // the tactical-leaving punishment; must exist before TacticalLeaveManager registers.
+        pvpMode = new PvpModeManager(this);
+        getServer().getPluginManager().registerEvents(pvpMode, this);
+        pvpMode.start();
+
+        // Combat-log ("tactical leaving") punishment — flags anyone who quits while in PvP mode;
+        // executes once the 10-min cumulative offline budget is gone (items drop at the quit
+        // spot). Rejoining pauses the clock but does NOT pardon — only the end of PvP mode does.
         tacticalLeaves = new TacticalLeaveManager(this, worldDatabase);
         getServer().getPluginManager().registerEvents(tacticalLeaves, this);
-        tacticalLeaves.start();   // re-arm expiry timers that a restart would otherwise lose
+        tacticalLeaves.start();   // re-arm offline timers that a restart would otherwise lose
 
         // Phantoms: removed from the Overworld (insomnia spawn cancelled) and relocated to The End,
         // where a ticker custom-spawns them in the air around players at a hostile-mob-like rate.
@@ -430,6 +439,7 @@ public final class HomeSystemPlugin extends JavaPlugin {
         // Restore any frozen player's inventory FIRST so a server stop never eats their items,
         // then close the DB pool.
         if (authManager != null) authManager.shutdownRestoreAll();
+        if (pvpMode != null) pvpMode.stop();
         if (computePool != null) computePool.shutdown();
         if (eventManager != null) eventManager.stop();
         if (endPhantoms != null) endPhantoms.stop();
@@ -508,6 +518,7 @@ public final class HomeSystemPlugin extends JavaPlugin {
     public WorldDatabase getWorldDatabase() { return worldDatabase; }
 
     public TacticalLeaveManager getTacticalLeaves() { return tacticalLeaves; }
+    public PvpModeManager getPvpMode() { return pvpMode; }
 
     public AuthManager getAuthManager() { return authManager; }
 
