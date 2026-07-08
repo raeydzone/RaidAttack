@@ -150,3 +150,9 @@ runnable server under `server/` (worlds, logs, third-party plugin configs like S
 
 - [`docs/plugin-set.md`](docs/plugin-set.md) — the third-party plugins this server runs
   (Citizens, SkinsRestorer), without pinned versions.
+- Player guides (human-readable, numbers verified against code — update them when the
+  mechanics they describe change):
+  [`docs/guide-home-protection.md`](docs/guide-home-protection.md),
+  [`docs/guide-alliances.md`](docs/guide-alliances.md),
+  [`docs/guide-raids-and-turrets.md`](docs/guide-raids-and-turrets.md),
+  [`docs/guide-pvp-mode.md`](docs/guide-pvp-mode.md).
