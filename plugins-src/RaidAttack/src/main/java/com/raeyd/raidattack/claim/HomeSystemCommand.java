@@ -912,7 +912,7 @@ public final class HomeSystemCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.YELLOW + "  /HomeSystem show border"    + ChatColor.GRAY + "  — replay the border particles");
         player.sendMessage(ChatColor.YELLOW + "  /HomeSystem current info"   + ChatColor.GRAY + "  — info about the zone you're standing in");
         player.sendMessage(ChatColor.YELLOW + "  /HomeSystem teleport"       + ChatColor.GRAY + "  — 15s channel → warp home (no moving/damage; not in PvP)");
-        player.sendMessage(ChatColor.YELLOW + "  /HomeSystem turret deploy"  + ChatColor.GRAY + "  — place a turret at your feet (max 4, ≥20 apart)");
+        player.sendMessage(ChatColor.YELLOW + "  /HomeSystem turret deploy"  + ChatColor.GRAY + "  — place a turret at your feet (max 4, ≥22 apart)");
         player.sendMessage(ChatColor.YELLOW + "  /HomeSystem turret list"    + ChatColor.GRAY + "  — list & visualise your turrets");
         player.sendMessage(ChatColor.YELLOW + "  /HomeSystem turret remove <#>" + ChatColor.GRAY + "  — remove turret by slot # (level kept)");
         player.sendMessage(ChatColor.YELLOW + "  /HomeSystem turret upgrade" + ChatColor.GRAY + "  — open the upgrade GUI (cost: 64 Diamond / 1 Nether Star)");
