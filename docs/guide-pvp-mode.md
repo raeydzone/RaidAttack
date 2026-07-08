@@ -132,8 +132,9 @@ dropped normally, the flag clears.
 
 If your cumulative offline time hits 10 minutes, the verdict executes — you die in absentia:
 
-1. **Your entire snapshotted inventory drops at the exact spot where you logged out.** Anyone
-   can walk over and take it.
+1. **Your snapshotted inventory drops at the exact spot where you logged out.** Anyone can walk
+   over and take it. The core-item protection below applies here too: each core item rolls its
+   80% keep — winners don't drop and are given back to you (same slots) when you next log in.
 2. A **server-wide death broadcast** goes out with your name, your opponent, and the
    **coordinates** of the drop:
 
@@ -141,14 +142,14 @@ If your cumulative offline time hits 10 minutes, the verdict executes — you di
 
 3. The execution **counts as a death**: every PvP pair you were in ends and your opponents are
    released — they can log out safely.
-4. **The next time you log in**, your inventory is wiped (those items already dropped at your
-   quit spot — nothing duplicates) and you die an artificial, chat-silent death, respawning at
-   your **bed / respawn anchor**, or the world spawn if you have none. You do not wake up
-   standing at the death spot.
+4. **The next time you log in**, your inventory is wiped (the dropped items are at your quit
+   spot — nothing duplicates), the core items that **won their keep roll are placed back into
+   their exact slots** (worn armor back on), and you die an artificial, chat-silent death,
+   respawning at your **bed / respawn anchor**, or the world spawn if you have none — with the
+   kept items still on you. You do not wake up standing at the death spot.
 
 Edge case: if you make it back and authenticate at the very last second, you're killed **live**
-on the quit spot instead — same broadcast, but since it's a real in-game death, the core-item
-protection below applies to it.
+on the quit spot instead — same broadcast, same core-item rolls (as a normal in-game death).
 
 **Bottom line:** never log out during a fight. If you must go, either finish the fight, get
 250+ blocks away, or wait for the "you may log out safely" message.
@@ -185,11 +186,10 @@ keep most of your kit; you're never guaranteed all of it.
 
 ### When does this apply?
 
-- **Every player death** — PvP, mobs, fall damage, lava, and even the *live* tactical-leave
-  execution (if you got back just before the timer expired).
-- **It does NOT apply to the offline tactical-leave execution.** If your 10-minute budget ran
-  out while you were gone, the **entire snapshot drops — no rolls, no mercy.** That's the
-  punishment. One more reason not to combat-log.
+**Every death, no exceptions** — PvP, mobs, fall damage, lava, the live tactical-leave
+execution, and the offline one too: if your 10-minute budget runs out while you're gone, the
+same rolls run on your snapshot — winners are returned to your slots at your next login, the
+rest drops at your quit spot for your opponent.
 
 ---
 

@@ -70,8 +70,10 @@ public final class TacticalLeaveManager implements Listener {
     /** Metadata carrying the prepared death message between a live kill and PlayerDeathEvent. */
     private static final String DEATH_MESSAGE_META = "ra_tactical_leave_death";
     /** Metadata marking the artificial at-login death of an already-executed leaver: the death
-     *  broadcast already went out at expiry, so this one must be chat-silent. */
-    private static final String SILENT_DEATH_META = "ra_tactical_leave_silent_death";
+     *  broadcast already went out at expiry, so this one must be chat-silent, and the inventory
+     *  (holding only the core items that won their keep roll at execution) survives it.
+     *  Public: {@link CoreItemKeepListener} checks it to skip re-rolling. */
+    public static final String SILENT_DEATH_META = "ra_tactical_leave_silent_death";
 
     private static final Component TAG = Component.text("[RaidAttack] ", NamedTextColor.YELLOW)
             .decorate(TextDecoration.BOLD);
@@ -231,29 +233,44 @@ public final class TacticalLeaveManager implements Listener {
         }
 
         // Normal case — victim offline (or unauthenticated in limbo, whose /login wipe dedupes):
-        // drop the snapshot where they logged out and declare the death globally.
+        // the execution is a death like any other, so the CORE-ITEM rolls apply here too. Each
+        // core item in the snapshot (armor / sword / mace / spear / bow / crossbow) wins an 80%
+        // keep — winners stay slot-sparse in the row and are restored into the player's slots at
+        // next login; everything else drops where they logged out, for the opponent to collect.
+        byte[] keptBlob = null;
         World world = Bukkit.getWorld(row.worldUuid());
         if (world != null && row.inventory() != null) {
             Location dropAt = new Location(world, row.x(), row.y(), row.z());
-            int dropped = 0;
+            int dropped = 0, kept = 0;
             try {
-                for (ItemStack item : deserializeInventory(row.inventory())) {
+                ItemStack[] snapshot = deserializeInventory(row.inventory());
+                ItemStack[] keptSlots = new ItemStack[snapshot.length];
+                for (int slot = 0; slot < snapshot.length; slot++) {
+                    ItemStack item = snapshot[slot];
                     if (item == null || item.getType().isAir()) continue;
+                    if (CoreItemKeepListener.isCoreItem(item.getType())
+                            && java.util.concurrent.ThreadLocalRandom.current().nextDouble() < CoreItemKeepListener.KEEP_CHANCE) {
+                        keptSlots[slot] = item;
+                        kept++;
+                        continue;
+                    }
                     world.dropItemNaturally(dropAt, item);
                     dropped++;
                 }
+                if (kept > 0) keptBlob = serializeStacks(keptSlots);
             } catch (Exception e) {
                 plugin.getLogger().warning("[TacticalLeave] snapshot drop failed for " + victimRid + ": " + e.getMessage());
             }
             plugin.getLogger().info("[TacticalLeave] executed on " + resolveName(victimRid) + " at "
-                    + fmt(dropAt) + " — dropped " + dropped + " stack(s) (opponent " + row.attackerName() + ").");
+                    + fmt(dropAt) + " — dropped " + dropped + " stack(s), core-item keeps " + kept
+                    + " (opponent " + row.attackerName() + ").");
         } else {
             plugin.getLogger().warning("[TacticalLeave] world " + row.worldUuid() + " not loaded — "
                     + "items for " + victimRid + " could not drop; death still declared.");
         }
 
         plugin.getServer().broadcast(deathMessage(resolveName(victimRid), row));
-        worldDb.markTacticalLeaveExecuted(victimRid);   // → next /login wipes the inventory
+        worldDb.markTacticalLeaveExecuted(victimRid, keptBlob);   // → next /login: wipe, restore kept, respawn-death
 
         // The execution counts as a death: release every opponent still paired with the leaver.
         if (plugin.getPvpMode() != null) {
@@ -331,12 +348,13 @@ public final class TacticalLeaveManager implements Listener {
             return;
         }
 
-        // Executed while they were away: their items already dropped at the quit spot — wipe the
-        // restored inventory so nothing duplicates, then run a REAL (artificial) death so they
-        // go through the respawn flow and wake at their bed / respawn anchor, or the world spawn
-        // if none — not standing alive on the death position. Wipe strictly BEFORE the kill so
-        // the death drops nothing (the snapshot already dropped at expiry). Runs a tick later so
-        // the login restore settles first.
+        // Executed while they were away: the non-kept items already dropped at the quit spot —
+        // wipe the restored inventory so nothing duplicates, put back the core items that WON
+        // their 80% keep roll at execution (exact slots, worn armor stays worn), then run a REAL
+        // (artificial) death so they go through the respawn flow and wake at their bed / respawn
+        // anchor, or the world spawn if none. The silent-death handler keeps the inventory
+        // through that death (drops cleared), so the kept winners survive it untouched. Runs a
+        // tick later so the login restore settles first.
         worldDb.deleteTacticalLeave(rid);
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
@@ -344,14 +362,31 @@ public final class TacticalLeaveManager implements Listener {
             inv.setStorageContents(new ItemStack[inv.getStorageContents().length]);
             inv.setArmorContents(new ItemStack[inv.getArmorContents().length]);
             inv.setItemInOffHand(null);
+            int restored = 0;
+            if (row.inventory() != null) {
+                try {
+                    ItemStack[] keptSlots = deserializeInventory(row.inventory());
+                    for (int slot = 0; slot < keptSlots.length && slot <= 40; slot++) {
+                        if (keptSlots[slot] == null || keptSlots[slot].getType().isAir()) continue;
+                        inv.setItem(slot, keptSlots[slot]);
+                        restored++;
+                    }
+                } catch (Exception e) {
+                    plugin.getLogger().warning("[TacticalLeave] kept-item restore failed for "
+                            + player.getName() + ": " + e.getMessage());
+                }
+            }
             player.sendMessage(Component.text("☠ You were killed for tactical leaving while you were"
-                    + " gone — your items dropped where you logged out.", NamedTextColor.RED));
+                    + " gone — your items dropped where you logged out"
+                    + (restored > 0 ? " (your core-item rolls saved " + restored + " item"
+                            + (restored == 1 ? "" : "s") + ")" : "") + ".", NamedTextColor.RED));
             // Chat-silent kill: the server-wide broadcast already happened at expiry. setHealth(0)
-            // is a plain death (no damager, ignores totems — the inventory is empty anyway).
+            // is a plain death (no damager, ignores totems).
             player.setMetadata(SILENT_DEATH_META, new FixedMetadataValue(plugin, true));
             player.setHealth(0.0);
             plugin.getLogger().info("[TacticalLeave] wiped inventory of " + player.getName()
-                    + " and ran the artificial respawn death (items dropped earlier at "
+                    + ", restored " + restored + " kept core item(s), ran the artificial respawn death"
+                    + " (items dropped earlier at "
                     + (int) row.x() + ", " + (int) row.y() + ", " + (int) row.z() + ").");
         });
     }
@@ -401,6 +436,10 @@ public final class TacticalLeaveManager implements Listener {
         Player player = event.getPlayer();
         if (player.hasMetadata(SILENT_DEATH_META)) {
             event.deathMessage(null);
+            // The inventory holds ONLY the core items that won their keep roll at execution —
+            // they must survive this artificial death. Drops cleared so nothing duplicates.
+            event.setKeepInventory(true);
+            event.getDrops().clear();
             player.removeMetadata(SILENT_DEATH_META, plugin);
             return;
         }
@@ -455,6 +494,17 @@ public final class TacticalLeaveManager implements Listener {
         try (org.bukkit.util.io.BukkitObjectOutputStream out = new org.bukkit.util.io.BukkitObjectOutputStream(bos)) {
             out.writeInt(all.size());
             for (ItemStack it : all) out.writeObject(it);
+        }
+        return bos.toByteArray();
+    }
+
+    /** Same blob format as {@link #serializeInventory}, for an already-assembled slot array —
+     *  nulls preserved, so the array doubles as a sparse slot map (index = inventory slot). */
+    private static byte[] serializeStacks(ItemStack[] slots) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (org.bukkit.util.io.BukkitObjectOutputStream out = new org.bukkit.util.io.BukkitObjectOutputStream(bos)) {
+            out.writeInt(slots.length);
+            for (ItemStack it : slots) out.writeObject(it);
         }
         return bos.toByteArray();
     }

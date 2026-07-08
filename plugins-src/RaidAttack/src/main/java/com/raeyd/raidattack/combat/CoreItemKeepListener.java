@@ -36,8 +36,9 @@ import org.bukkit.inventory.ItemStack;
  */
 public final class CoreItemKeepListener implements Listener {
 
-    /** Per-item chance to survive the death (stay in inventory). */
-    private static final double KEEP_CHANCE = 0.80;
+    /** Per-item chance to survive the death (stay in inventory). Shared with the tactical-leave
+     *  execution path, which applies the same rolls to the offline snapshot drop. */
+    public static final double KEEP_CHANCE = 0.80;
 
     private final HomeSystemPlugin plugin;
 
@@ -50,6 +51,10 @@ public final class CoreItemKeepListener implements Listener {
         if (event.getKeepInventory()) return;                 // nothing is dropping anyway
         Player player = event.getEntity();
         if (isNpc(player)) return;
+        // The tactical-leave artificial at-login death: the core-item rolls already ran at
+        // execution time (on the snapshot) — the inventory holds ONLY the kept winners, and the
+        // silent-death handler keeps them through this death. Rolling again would double-dip.
+        if (player.hasMetadata(TacticalLeaveManager.SILENT_DEATH_META)) return;
 
         // Iterate the LIVE inventory (storage + armor + offhand) so kept stacks are the exact
         // instances still sitting in their slots — that's what preserves slot + worn state.
@@ -72,7 +77,7 @@ public final class CoreItemKeepListener implements Listener {
 
     /** Armor pieces, swords, mace, spears, bow, crossbow. Name-matched so material additions
      *  (new tiers of sword/spear/armor) are covered without touching this list. */
-    private static boolean isCoreItem(Material material) {
+    public static boolean isCoreItem(Material material) {
         if (material == Material.MACE || material == Material.BOW || material == Material.CROSSBOW) return true;
         String name = material.name();
         return name.endsWith("_HELMET") || name.endsWith("_CHESTPLATE")

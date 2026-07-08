@@ -752,11 +752,16 @@ public final class WorldDatabase {
         return out;
     }
 
-    /** Items dropped: flag the row for the next-login inventory wipe and drop the snapshot blob. */
-    public void markTacticalLeaveExecuted(UUID victimRid) {
+    /**
+     * Items dropped: flag the row for the next-login handling. The inventory blob is REPLACED by
+     * {@code keptItems} — the core items that won their 80% keep roll at execution (slot-sparse,
+     * same serialized format), restored into the player's slots at next login; NULL if none won.
+     */
+    public void markTacticalLeaveExecuted(UUID victimRid, byte[] keptItems) {
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "UPDATE world.tactical_leaves SET executed = TRUE, inventory = NULL WHERE victim_rid = ?")) {
-            ps.setObject(1, victimRid);
+                "UPDATE world.tactical_leaves SET executed = TRUE, inventory = ? WHERE victim_rid = ?")) {
+            ps.setBytes(1, keptItems);
+            ps.setObject(2, victimRid);
             ps.executeUpdate();
         } catch (SQLException e) { log.warning("world: markTacticalLeaveExecuted failed for " + victimRid + ": " + e.getMessage()); }
     }
