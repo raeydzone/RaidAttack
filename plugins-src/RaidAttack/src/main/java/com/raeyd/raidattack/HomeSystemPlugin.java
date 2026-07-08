@@ -19,6 +19,7 @@ import com.raeyd.raidattack.claim.SpawnAreaManager;
 import com.raeyd.raidattack.claim.ZoneListener;
 import com.raeyd.raidattack.combat.ArmorDurabilityManager;
 import com.raeyd.raidattack.combat.CombatBalanceListener;
+import com.raeyd.raidattack.combat.CoreItemKeepListener;
 import com.raeyd.raidattack.combat.DamageTrackingListener;
 import com.raeyd.raidattack.combat.EndPhantomManager;
 import com.raeyd.raidattack.combat.PvpModeManager;
@@ -352,6 +353,10 @@ public final class HomeSystemPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new DamageTrackingListener(this), this);
         // Active combat nerfs (mace/spear caps + crystal/anchor explosion rework).
         getServer().getPluginManager().registerEvents(new CombatBalanceListener(this), this);
+
+        // Core-item death protection: armor/sword/mace/spear/bow/crossbow each roll an 80%
+        // keep-in-slot chance on death; everything else always drops.
+        getServer().getPluginManager().registerEvents(new CoreItemKeepListener(this), this);
 
         // PvP mode — pairwise >25-raw-damage / 5-min-window / 250-block tracking. Foundation for
         // the tactical-leaving punishment; must exist before TacticalLeaveManager registers.
