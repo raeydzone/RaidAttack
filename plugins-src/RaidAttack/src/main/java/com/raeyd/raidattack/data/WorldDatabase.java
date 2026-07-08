@@ -147,6 +147,19 @@ public final class WorldDatabase {
         // Only the 36h per-zone cooldown and the per-player loot stash survive restarts.
         exec("CREATE TABLE IF NOT EXISTS world.raid_cooldowns (zone_owner_rid UUID PRIMARY KEY, until_millis BIGINT NOT NULL)");
         exec("CREATE TABLE IF NOT EXISTS world.raid_inventories (owner_rid UUID PRIMARY KEY, contents BYTEA NOT NULL)");
+        // Combat-log ("tactical leaving") pending punishments. A row = the player quit low-HP while
+        // chased; judged at their next successful /login (DB so the 10-min window survives restarts).
+        exec("""
+            CREATE TABLE IF NOT EXISTS world.tactical_leaves (
+                victim_rid     UUID PRIMARY KEY,
+                attacker_name  TEXT NOT NULL,
+                world_uuid     UUID NOT NULL,
+                x DOUBLE PRECISION NOT NULL,
+                y DOUBLE PRECISION NOT NULL,
+                z DOUBLE PRECISION NOT NULL,
+                quit_at_millis BIGINT NOT NULL
+            )
+            """);
         log.info("World schema ensured (gameplay tables).");
     }
 
@@ -652,6 +665,54 @@ public final class WorldDatabase {
             }
             c.commit();
         } catch (SQLException e) { log.warning("world: saveRaidInventoryBlobs failed: " + e.getMessage()); }
+    }
+
+    // ---- tactical leaves (combat-log punishment) ------------------------------------------
+    // One row per player who quit low-HP while chased. Written on quit, consumed (deleted) at
+    // the next successful /login, where the 10-min grace is judged against quit_at_millis.
+
+    public record TacticalLeaveRow(UUID victimRid, String attackerName, UUID worldUuid,
+                                   double x, double y, double z, long quitAtMillis) {}
+
+    public void upsertTacticalLeave(TacticalLeaveRow row) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO world.tactical_leaves (victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis)
+                VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT (victim_rid) DO UPDATE SET attacker_name = EXCLUDED.attacker_name,
+                    world_uuid = EXCLUDED.world_uuid, x = EXCLUDED.x, y = EXCLUDED.y, z = EXCLUDED.z,
+                    quit_at_millis = EXCLUDED.quit_at_millis
+                """)) {
+            ps.setObject(1, row.victimRid());
+            ps.setString(2, row.attackerName());
+            ps.setObject(3, row.worldUuid());
+            ps.setDouble(4, row.x()); ps.setDouble(5, row.y()); ps.setDouble(6, row.z());
+            ps.setLong(7, row.quitAtMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) { log.warning("world: upsertTacticalLeave failed for " + row.victimRid() + ": " + e.getMessage()); }
+    }
+
+    /** The pending tactical-leave row for a player, or null. */
+    public TacticalLeaveRow loadTacticalLeave(UUID victimRid) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "SELECT attacker_name, world_uuid, x, y, z, quit_at_millis FROM world.tactical_leaves WHERE victim_rid = ?")) {
+            ps.setObject(1, victimRid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new TacticalLeaveRow(victimRid, rs.getString(1), rs.getObject(2, UUID.class),
+                        rs.getDouble(3), rs.getDouble(4), rs.getDouble(5), rs.getLong(6));
+            }
+        } catch (SQLException e) {
+            log.warning("world: loadTacticalLeave failed for " + victimRid + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    public void deleteTacticalLeave(UUID victimRid) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "DELETE FROM world.tactical_leaves WHERE victim_rid = ?")) {
+            ps.setObject(1, victimRid);
+            ps.executeUpdate();
+        } catch (SQLException e) { log.warning("world: deleteTacticalLeave failed for " + victimRid + ": " + e.getMessage()); }
     }
 
     // ---- bans (unified into public.account_flags 'mc_ban') -------------------------------

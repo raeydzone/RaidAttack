@@ -174,6 +174,11 @@ public final class AuthManager {
         teleportToOrigin(player, s);
         vault.delete(s.uuid);               // authenticated → drop the durable backup
         player.sendMessage(Component.text("✅ Logged in. Welcome to Raid Attack!", NamedTextColor.GREEN));
+        // Combat-log verdict runs strictly AFTER login: inventory is restored and limbo is over, so
+        // a tactical-leave kill here drops the real items (in limbo the vault hides them).
+        if (plugin.getTacticalLeaves() != null) {
+            plugin.getTacticalLeaves().onAuthenticatedLogin(player);
+        }
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 db.markSuccess(s.uuid, s.ip);

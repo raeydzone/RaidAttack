@@ -21,6 +21,7 @@ import com.raeyd.raidattack.combat.ArmorDurabilityManager;
 import com.raeyd.raidattack.combat.CombatBalanceListener;
 import com.raeyd.raidattack.combat.DamageTrackingListener;
 import com.raeyd.raidattack.combat.EndPhantomManager;
+import com.raeyd.raidattack.combat.TacticalLeaveManager;
 import com.raeyd.raidattack.combat.HappyGhastManager;
 import com.raeyd.raidattack.combat.WitherCombatManager;
 import com.raeyd.raidattack.core.ChatListener;
@@ -95,6 +96,7 @@ public final class HomeSystemPlugin extends JavaPlugin {
     private RightsManager rightsManager;
     private ModerationService moderationService;
     private ArmorDurabilityManager armorDurability;
+    private TacticalLeaveManager tacticalLeaves;
     private HappyGhastManager happyGhasts;
     private QuestManager quests;
     private HomeTeleportManager homeTeleport;
@@ -349,6 +351,11 @@ public final class HomeSystemPlugin extends JavaPlugin {
         // Active combat nerfs (mace/spear caps + crystal/anchor explosion rework).
         getServer().getPluginManager().registerEvents(new CombatBalanceListener(this), this);
 
+        // Combat-log ("tactical leaving") punishment — marks low-HP chased quitters, judged at
+        // their next successful /login (AuthManager calls onAuthenticatedLogin).
+        tacticalLeaves = new TacticalLeaveManager(this, worldDatabase);
+        getServer().getPluginManager().registerEvents(tacticalLeaves, this);
+
         // Phantoms: removed from the Overworld (insomnia spawn cancelled) and relocated to The End,
         // where a ticker custom-spawns them in the air around players at a hostile-mob-like rate.
         endPhantoms = new EndPhantomManager(this);
@@ -498,6 +505,8 @@ public final class HomeSystemPlugin extends JavaPlugin {
     public SpawnAreaManager getSpawnArea() { return spawnArea; }
     public ComputePool getComputePool() { return computePool; }
     public WorldDatabase getWorldDatabase() { return worldDatabase; }
+
+    public TacticalLeaveManager getTacticalLeaves() { return tacticalLeaves; }
 
     /** Master switch for all {@code dev} commands/subcommands. Default OFF. When off, dev commands
      *  are fully disabled — functionally and hidden from tab-completion. */
