@@ -148,7 +148,9 @@ public final class WorldDatabase {
         exec("CREATE TABLE IF NOT EXISTS world.raid_cooldowns (zone_owner_rid UUID PRIMARY KEY, until_millis BIGINT NOT NULL)");
         exec("CREATE TABLE IF NOT EXISTS world.raid_inventories (owner_rid UUID PRIMARY KEY, contents BYTEA NOT NULL)");
         // Combat-log ("tactical leaving") pending punishments. A row = the player quit low-HP while
-        // chased; judged at their next successful /login (DB so the 10-min window survives restarts).
+        // chased. `inventory` is the quit-time snapshot dropped at the spot when the 10-min timer
+        // expires (victim usually offline); `executed` = items already dropped, wipe the player's
+        // inventory at their next /login so nothing duplicates. DB so restarts don't pardon.
         exec("""
             CREATE TABLE IF NOT EXISTS world.tactical_leaves (
                 victim_rid     UUID PRIMARY KEY,
@@ -157,9 +159,14 @@ public final class WorldDatabase {
                 x DOUBLE PRECISION NOT NULL,
                 y DOUBLE PRECISION NOT NULL,
                 z DOUBLE PRECISION NOT NULL,
-                quit_at_millis BIGINT NOT NULL
+                quit_at_millis BIGINT NOT NULL,
+                inventory      BYTEA,
+                executed       BOOLEAN NOT NULL DEFAULT FALSE
             )
             """);
+        // Upgrade path for tables created before the expiry-time execution model.
+        exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS inventory BYTEA");
+        exec("ALTER TABLE world.tactical_leaves ADD COLUMN IF NOT EXISTS executed BOOLEAN NOT NULL DEFAULT FALSE");
         log.info("World schema ensured (gameplay tables).");
     }
 
@@ -668,25 +675,31 @@ public final class WorldDatabase {
     }
 
     // ---- tactical leaves (combat-log punishment) ------------------------------------------
-    // One row per player who quit low-HP while chased. Written on quit, consumed (deleted) at
-    // the next successful /login, where the 10-min grace is judged against quit_at_millis.
+    // One row per player who quit low-HP while chased. Written on quit (with an inventory
+    // snapshot); executed at the 10-min expiry (items dropped, executed=TRUE, snapshot nulled);
+    // finally consumed at the victim's next /login (inventory wipe). A /login within the grace
+    // deletes the row (pardon).
 
     public record TacticalLeaveRow(UUID victimRid, String attackerName, UUID worldUuid,
-                                   double x, double y, double z, long quitAtMillis) {}
+                                   double x, double y, double z, long quitAtMillis,
+                                   byte[] inventory, boolean executed) {}
 
     public void upsertTacticalLeave(TacticalLeaveRow row) {
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
-                INSERT INTO world.tactical_leaves (victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis)
-                VALUES (?,?,?,?,?,?,?)
+                INSERT INTO world.tactical_leaves (victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed)
+                VALUES (?,?,?,?,?,?,?,?,?)
                 ON CONFLICT (victim_rid) DO UPDATE SET attacker_name = EXCLUDED.attacker_name,
                     world_uuid = EXCLUDED.world_uuid, x = EXCLUDED.x, y = EXCLUDED.y, z = EXCLUDED.z,
-                    quit_at_millis = EXCLUDED.quit_at_millis
+                    quit_at_millis = EXCLUDED.quit_at_millis, inventory = EXCLUDED.inventory,
+                    executed = EXCLUDED.executed
                 """)) {
             ps.setObject(1, row.victimRid());
             ps.setString(2, row.attackerName());
             ps.setObject(3, row.worldUuid());
             ps.setDouble(4, row.x()); ps.setDouble(5, row.y()); ps.setDouble(6, row.z());
             ps.setLong(7, row.quitAtMillis());
+            ps.setBytes(8, row.inventory());
+            ps.setBoolean(9, row.executed());
             ps.executeUpdate();
         } catch (SQLException e) { log.warning("world: upsertTacticalLeave failed for " + row.victimRid() + ": " + e.getMessage()); }
     }
@@ -694,17 +707,45 @@ public final class WorldDatabase {
     /** The pending tactical-leave row for a player, or null. */
     public TacticalLeaveRow loadTacticalLeave(UUID victimRid) {
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
-                "SELECT attacker_name, world_uuid, x, y, z, quit_at_millis FROM world.tactical_leaves WHERE victim_rid = ?")) {
+                "SELECT attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed"
+                        + " FROM world.tactical_leaves WHERE victim_rid = ?")) {
             ps.setObject(1, victimRid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
                 return new TacticalLeaveRow(victimRid, rs.getString(1), rs.getObject(2, UUID.class),
-                        rs.getDouble(3), rs.getDouble(4), rs.getDouble(5), rs.getLong(6));
+                        rs.getDouble(3), rs.getDouble(4), rs.getDouble(5), rs.getLong(6),
+                        rs.getBytes(7), rs.getBoolean(8));
             }
         } catch (SQLException e) {
             log.warning("world: loadTacticalLeave failed for " + victimRid + ": " + e.getMessage());
             return null;
         }
+    }
+
+    /** All rows — used on boot to re-arm expiry timers lost to the restart. */
+    public List<TacticalLeaveRow> loadAllTacticalLeaves() {
+        List<TacticalLeaveRow> out = new ArrayList<>();
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                "SELECT victim_rid, attacker_name, world_uuid, x, y, z, quit_at_millis, inventory, executed"
+                        + " FROM world.tactical_leaves");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                out.add(new TacticalLeaveRow(rs.getObject(1, UUID.class), rs.getString(2),
+                        rs.getObject(3, UUID.class), rs.getDouble(4), rs.getDouble(5), rs.getDouble(6),
+                        rs.getLong(7), rs.getBytes(8), rs.getBoolean(9)));
+            }
+        } catch (SQLException e) { log.warning("world: loadAllTacticalLeaves failed: " + e.getMessage()); }
+        return out;
+    }
+
+    /** Items dropped: flag the row for the next-login inventory wipe and drop the snapshot blob. */
+    public void markTacticalLeaveExecuted(UUID victimRid) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "UPDATE world.tactical_leaves SET executed = TRUE, inventory = NULL WHERE victim_rid = ?")) {
+            ps.setObject(1, victimRid);
+            ps.executeUpdate();
+        } catch (SQLException e) { log.warning("world: markTacticalLeaveExecuted failed for " + victimRid + ": " + e.getMessage()); }
     }
 
     public void deleteTacticalLeave(UUID victimRid) {

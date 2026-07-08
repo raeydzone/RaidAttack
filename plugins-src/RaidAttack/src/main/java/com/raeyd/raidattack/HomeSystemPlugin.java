@@ -351,10 +351,11 @@ public final class HomeSystemPlugin extends JavaPlugin {
         // Active combat nerfs (mace/spear caps + crystal/anchor explosion rework).
         getServer().getPluginManager().registerEvents(new CombatBalanceListener(this), this);
 
-        // Combat-log ("tactical leaving") punishment — marks low-HP chased quitters, judged at
-        // their next successful /login (AuthManager calls onAuthenticatedLogin).
+        // Combat-log ("tactical leaving") punishment — marks low-HP chased quitters; executes at
+        // the 10-min expiry (items drop at the quit spot), the next /login only wipes/pardons.
         tacticalLeaves = new TacticalLeaveManager(this, worldDatabase);
         getServer().getPluginManager().registerEvents(tacticalLeaves, this);
+        tacticalLeaves.start();   // re-arm expiry timers that a restart would otherwise lose
 
         // Phantoms: removed from the Overworld (insomnia spawn cancelled) and relocated to The End,
         // where a ticker custom-spawns them in the air around players at a hostile-mob-like rate.
@@ -507,6 +508,8 @@ public final class HomeSystemPlugin extends JavaPlugin {
     public WorldDatabase getWorldDatabase() { return worldDatabase; }
 
     public TacticalLeaveManager getTacticalLeaves() { return tacticalLeaves; }
+
+    public AuthManager getAuthManager() { return authManager; }
 
     /** Master switch for all {@code dev} commands/subcommands. Default OFF. When off, dev commands
      *  are fully disabled — functionally and hidden from tab-completion. */
