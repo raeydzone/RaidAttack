@@ -8,6 +8,7 @@ import com.raeyd.raidattack.raid.ActiveRaid;
 import com.raeyd.raidattack.raid.CustomRaider;
 import com.raeyd.raidattack.raid.CustomRavager;
 import com.raeyd.raidattack.raid.RaidEntityManager;
+import com.raeyd.raidattack.raid.RaidMessages;
 import com.raeyd.raidattack.turret.Turret;
 import com.raeyd.raidattack.turret.TurretStructure;
 import java.util.HashMap;
@@ -2933,6 +2934,14 @@ public final class WitherCombatManager implements Listener {
         raid.markAllTurretsBonusAwarded();
         plugin.getRaidManager().awardAttackerSideBonus(raid, 500,
                 "Successfully Raided");
+        // Punishment for losing every turret: leak the base's centre coordinates to ALL chat.
+        // Rides the same one-shot flag as the bonus, so it fires once per raid at the exact
+        // "everything is down at the same moment" instant the bonus itself is gated on.
+        String ownerName = plugin.getClaimManager().resolveName(claim.getOwner());
+        int centerX = (claim.getMinX() + claim.getMaxX()) / 2;
+        int centerZ = (claim.getMinZ() + claim.getMaxZ()) / 2;
+        RaidMessages.broadcastNegative(ownerName + "'s base has lost all its turrets — it lies at "
+                + centerX + ", " + centerZ + ".");
     }
 
     /**

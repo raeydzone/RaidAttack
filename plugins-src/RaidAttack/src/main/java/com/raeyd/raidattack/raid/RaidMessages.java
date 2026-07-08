@@ -62,6 +62,14 @@ public final class RaidMessages {
         send(to, body, NamedTextColor.RED, sound, 1.0f);
     }
 
+    /**
+     * Broadcast a negative {@code [Raid]} message (RED body) to the WHOLE server. Used for
+     * defender penalties — e.g. the base-breached coordinate leak when every turret is down.
+     */
+    public static void broadcastNegative(String body) {
+        Bukkit.broadcast(TAG.append(Component.text(body, NamedTextColor.RED)));
+    }
+
     // -- internals ------------------------------------------------------------
 
     private static void send(Player to, String body, NamedTextColor colour, Sound sound, float pitch) {
