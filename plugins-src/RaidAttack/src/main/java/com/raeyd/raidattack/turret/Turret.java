@@ -38,7 +38,7 @@ public final class Turret {
      * Current structure HP (0..MAX). Hits 0 → turret enters its destroyed state.
      * <p>Initialised to the absolute max ({@value #MAX_STRUCTURE_HP}); the spawn / respawn
      * flow re-sets it to {@link #maxHpForLevel(int)} for the slot's current level so a fresh
-     * L1 starts at 150, L2 at 175, L3 at 200.
+     * L1 starts at 200, L2 at 250, L3 at 300.
      */
     private int structureHp = MAX_STRUCTURE_HP;
     /** Epoch ms when a destroyed turret should respawn. 0 = not currently destroyed. */
