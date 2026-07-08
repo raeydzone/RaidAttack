@@ -69,6 +69,9 @@ public final class TacticalLeaveManager implements Listener {
 
     /** Metadata carrying the prepared death message between a live kill and PlayerDeathEvent. */
     private static final String DEATH_MESSAGE_META = "ra_tactical_leave_death";
+    /** Metadata marking the artificial at-login death of an already-executed leaver: the death
+     *  broadcast already went out at expiry, so this one must be chat-silent. */
+    private static final String SILENT_DEATH_META = "ra_tactical_leave_silent_death";
 
     private static final Component TAG = Component.text("[RaidAttack] ", NamedTextColor.YELLOW)
             .decorate(TextDecoration.BOLD);
@@ -329,7 +332,11 @@ public final class TacticalLeaveManager implements Listener {
         }
 
         // Executed while they were away: their items already dropped at the quit spot — wipe the
-        // restored inventory so nothing duplicates. Runs a tick later so the login restore settles.
+        // restored inventory so nothing duplicates, then run a REAL (artificial) death so they
+        // go through the respawn flow and wake at their bed / respawn anchor, or the world spawn
+        // if none — not standing alive on the death position. Wipe strictly BEFORE the kill so
+        // the death drops nothing (the snapshot already dropped at expiry). Runs a tick later so
+        // the login restore settles first.
         worldDb.deleteTacticalLeave(rid);
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
@@ -339,8 +346,13 @@ public final class TacticalLeaveManager implements Listener {
             inv.setItemInOffHand(null);
             player.sendMessage(Component.text("☠ You were killed for tactical leaving while you were"
                     + " gone — your items dropped where you logged out.", NamedTextColor.RED));
+            // Chat-silent kill: the server-wide broadcast already happened at expiry. setHealth(0)
+            // is a plain death (no damager, ignores totems — the inventory is empty anyway).
+            player.setMetadata(SILENT_DEATH_META, new FixedMetadataValue(plugin, true));
+            player.setHealth(0.0);
             plugin.getLogger().info("[TacticalLeave] wiped inventory of " + player.getName()
-                    + " (items dropped earlier at " + (int) row.x() + ", " + (int) row.y() + ", " + (int) row.z() + ").");
+                    + " and ran the artificial respawn death (items dropped earlier at "
+                    + (int) row.x() + ", " + (int) row.y() + ", " + (int) row.z() + ").");
         });
     }
 
@@ -382,10 +394,16 @@ public final class TacticalLeaveManager implements Listener {
         worldDb.deleteTacticalLeave(victimRid);
     }
 
-    /** Swap the vanilla death message for the tactical-leaving broadcast (live-kill path only). */
+    /** Swap the vanilla death message for the tactical-leaving broadcast (live-kill path only),
+     *  or silence it entirely for the artificial at-login respawn death (already broadcast). */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onDeathMessage(PlayerDeathEvent event) {
         Player player = event.getPlayer();
+        if (player.hasMetadata(SILENT_DEATH_META)) {
+            event.deathMessage(null);
+            player.removeMetadata(SILENT_DEATH_META, plugin);
+            return;
+        }
         if (!player.hasMetadata(DEATH_MESSAGE_META)) return;
         for (var meta : player.getMetadata(DEATH_MESSAGE_META)) {
             if (meta.getOwningPlugin() == plugin) {
