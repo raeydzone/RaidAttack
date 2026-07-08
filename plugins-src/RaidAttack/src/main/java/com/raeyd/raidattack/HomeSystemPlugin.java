@@ -543,6 +543,10 @@ public final class HomeSystemPlugin extends JavaPlugin {
         // so the owner's next /HomeSystem claim restores their upgrades.
         claim.clearTurretSlots();
         boolean removed = claimManager.removeClaim(owner);
+        // Moving the base away forfeits any active re-raid protection. The cooldown is keyed by
+        // owner, so leaving it in place would let a raided player unclaim + re-claim elsewhere
+        // and carry the protection along — chaining that would keep them unraidable forever.
+        if (removed && raidManager != null) raidManager.clearZoneCooldown(owner);
         // Second safety net: kill any Citizens NPC named "Turret #..." that's now unreferenced.
         // Catches the rare case where despawn() above silently failed (Citizens reload mid-tick,
         // chunk unloaded at the wrong moment, etc.) and would otherwise leave a free-floating

@@ -386,6 +386,17 @@ public final class RaidManager {
         save();
     }
 
+    /**
+     * Drop this zone's re-raid protection immediately. Called when the owner unclaims their base:
+     * the cooldown is keyed by owner (not location), so without this an owner raided at spot A
+     * could relocate to spot B and arrive still protected — unclaim + re-claim on repeat would
+     * keep a base permanently unraidable. Moving away forfeits the protection instead.
+     */
+    public void clearZoneCooldown(UUID zoneOwnerId) {
+        if (zoneOwnerId == null) return;
+        if (zoneCooldownUntil.remove(zoneOwnerId) != null) save();
+    }
+
     /** Milliseconds left on this zone's raid cooldown, or 0 if none (expired entries pruned). */
     public long getZoneCooldownRemainingMs(UUID zoneOwnerId) {
         if (zoneOwnerId == null) return 0L;
