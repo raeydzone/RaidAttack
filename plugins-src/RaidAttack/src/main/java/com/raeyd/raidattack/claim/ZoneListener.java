@@ -18,6 +18,7 @@ import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -303,14 +304,37 @@ public final class ZoneListener implements Listener {
     /**
      * Entity-driven block changes inside a claim. Wither's direct "wither dash" block-break
      * doesn't fire EntityExplodeEvent — it goes through EntityChangeBlockEvent. Endermen
-     * picking up blocks, sand falling and replacing a block, ravagers smashing leaves, all
-     * route through here too. Cancel anything inside a claim.
+     * picking up blocks, ravagers smashing leaves, all route through here too. Cancel anything
+     * inside a claim — EXCEPT member-owned gravity: falling blocks (sand, gravel, anvils,
+     * concrete powder) fire this event both when they start to fall (block → air) and when they
+     * land (air → block), and the old blanket cancel froze every gravity block inside every base.
+     *
+     * <p>Letting gravity work is safe because of how each half is gated:
+     * <ul>
+     *   <li><b>Start-of-fall — allowed.</b> The block already exists inside the claim, and every
+     *       path an outsider could use to get one there is blocked elsewhere (block place, bucket,
+     *       cross-border pistons, explosions). So it's member-placed or natural terrain.</li>
+     *   <li><b>Landing — allowed only if the fall began inside this same claim.</b> A falling
+     *       block arriving from anywhere else (sand/anvil cannon lobbing entities over the border,
+     *       a drop-tower hugging the edge, plugin-spawned = null origin) is hostile: cancel AND
+     *       remove the entity without drops so nothing lingers or litters into the base.</li>
+     * </ul>
+     * Turret columns are unaffected either way — {@code TurretProtectionListener} keeps its own
+     * blanket EntityChangeBlock cancel there, so gravity blocks still can't bury a turret.
      */
     @EventHandler(ignoreCancelled = true)
     public void onEntityChangeBlock(org.bukkit.event.entity.EntityChangeBlockEvent e) {
-        if (claims.getClaimAt(e.getBlock().getLocation()) != null) {
+        Claim claim = claims.getClaimAt(e.getBlock().getLocation());
+        if (claim == null) return;
+        if (e.getEntity() instanceof FallingBlock fallingBlock) {
+            if (e.getTo().isAir()) return;                       // start-of-fall: member gravity
+            Location origin = fallingBlock.getOrigin();
+            if (origin != null && claims.getClaimAt(origin) == claim) return;   // same-claim landing
             e.setCancelled(true);
+            fallingBlock.remove();   // don't leave the cancelled entity re-trying (or dropping) each tick
+            return;
         }
+        e.setCancelled(true);
     }
 
     /**
