@@ -15,16 +15,12 @@ import org.bukkit.block.Block;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.scheduler.BukkitTask;
 
 /**
@@ -32,8 +28,9 @@ import org.bukkit.scheduler.BukkitTask;
  * caller's own protected claim ("home"). A boss-bar timer counts down on screen. The channel is
  * gated and interruptible:
  * <ol>
- *   <li><b>Pre-condition:</b> the caller must NOT have been damaged by another player in the last
- *       {@value #NO_PVP_SECONDS}s (can't bail out of active PvP).</li>
+ *   <li><b>Pre-condition:</b> the caller must NOT be in {@link PvpModeManager PvP mode} — you
+ *       can't teleport out of an active fight. This single check replaces the old
+ *       recent-player-damage heuristic; PvP mode is the authoritative "in combat" signal.</li>
  *   <li><b>Move-break:</b> moving from the spot they started channelling on cancels it.</li>
  *   <li><b>Damage-break:</b> taking ANY damage during the channel cancels it.</li>
  * </ol>
@@ -42,9 +39,6 @@ public final class HomeTeleportManager implements Listener {
 
     /** Channel duration. */
     private static final long CHANNEL_TICKS = 300L;            // 15 s
-    /** Recent-PvP lockout window before a channel may start. */
-    private static final long NO_PVP_TICKS = 1800L;            // 90 s
-    private static final int NO_PVP_SECONDS = 90;
     /** Movement tolerance (squared blocks) before the channel breaks. */
     private static final double MOVE_EPSILON_SQ = 0.04;        // ~0.2 blocks
 
@@ -53,8 +47,6 @@ public final class HomeTeleportManager implements Listener {
 
     /** Active channels by player. */
     private final Map<UUID, Channel> channels = new HashMap<>();
-    /** Last tick each player was damaged by another player (for the PvP lockout). */
-    private final Map<UUID, Long> lastPvpTick = new HashMap<>();
 
     public HomeTeleportManager(HomeSystemPlugin plugin) {
         this.plugin = plugin;
@@ -82,7 +74,6 @@ public final class HomeTeleportManager implements Listener {
             try { c.bar.removeAll(); } catch (Throwable ignored) {}
         }
         channels.clear();
-        lastPvpTick.clear();
     }
 
     // -- command entry --------------------------------------------------------
@@ -107,15 +98,10 @@ public final class HomeTeleportManager implements Listener {
             player.sendMessage(ChatColor.RED + "You're already inside your home.");
             return;
         }
-        Long lastPvp = lastPvpTick.get(id);
-        if (lastPvp != null) {
-            long elapsed = Bukkit.getCurrentTick() - lastPvp;
-            if (elapsed < NO_PVP_TICKS) {
-                long waitS = (NO_PVP_TICKS - elapsed + 19) / 20;
-                player.sendMessage(ChatColor.RED + "You were recently in combat. Wait "
-                        + waitS + "s before teleporting home.");
-                return;
-            }
+        if (plugin.getPvpMode() != null && plugin.getPvpMode().isInPvpMode(id)) {
+            player.sendMessage(ChatColor.RED + "You're in PvP mode — you can't teleport home until"
+                    + " the fight is over.");
+            return;
         }
 
         long now = Bukkit.getCurrentTick();
@@ -216,45 +202,16 @@ public final class HomeTeleportManager implements Listener {
 
     // -- listeners ------------------------------------------------------------
 
+    /** ANY damage during the channel cancels it. (The "in combat" pre-condition is now PvP mode,
+     *  checked at request time — this listener only handles the interrupt.) */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent e) {
         if (!(e.getEntity() instanceof Player victim)) return;
-        // Record player-vs-player damage for the 90 s pre-condition. ONLY real human players
-        // count — Citizens raider NPCs also arrive as Player instances, but being attacked by a
-        // raid mob must NOT block a home teleport (that's exactly when you'd want to bail).
-        if (e instanceof EntityDamageByEntityEvent ev) {
-            Entity root = resolveAttacker(ev.getDamager());
-            if (root != null && isRealPlayer(root) && !root.getUniqueId().equals(victim.getUniqueId())) {
-                lastPvpTick.put(victim.getUniqueId(), (long) Bukkit.getCurrentTick());
-            }
-        }
-        // ANY damage breaks an in-progress channel.
         if (channels.containsKey(victim.getUniqueId())) abort(victim.getUniqueId(), victim, "you took damage");
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent e) {
         abort(e.getPlayer().getUniqueId(), null, null);
-        lastPvpTick.remove(e.getPlayer().getUniqueId());
-    }
-
-    /** True only for a genuine human player — excludes Citizens player-type NPCs (raiders). */
-    private static boolean isRealPlayer(Entity e) {
-        if (!(e instanceof Player)) return false;
-        if (Bukkit.getPluginManager().getPlugin("Citizens") == null) return true;
-        try {
-            return !net.citizensnpcs.api.CitizensAPI.getNPCRegistry().isNPC(e);
-        } catch (Throwable t) {
-            return true;   // Citizens API hiccup — fail safe by treating it as a real player
-        }
-    }
-
-    /** Resolve a projectile to its shooter, else the damager itself. */
-    private static Entity resolveAttacker(Entity damager) {
-        if (damager instanceof Projectile proj) {
-            ProjectileSource src = proj.getShooter();
-            return (src instanceof Entity en) ? en : null;
-        }
-        return damager;
     }
 }

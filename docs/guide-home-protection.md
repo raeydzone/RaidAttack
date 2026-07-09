@@ -83,7 +83,7 @@ From anywhere in the world you can channel a teleport back to your own claim:
 - The channel takes **15 seconds**, shown as a countdown boss bar at the top of your screen.
 - **Don't move** — shifting more than a fraction of a block from where you started cancels it.
 - **Don't take damage** — *any* damage during the channel cancels it.
-- **No escaping PvP:** if another player has damaged you in the last **90 seconds**, you can't start the channel at all; the command tells you how long to wait. Being hit by raid mobs doesn't count against this timer — only real players do — so you can still teleport away from a monster fight.
+- **No escaping PvP:** if you're in **PvP mode** you can't start the channel at all — you have to be out of PvP mode first (see the [PvP mode guide](guide-pvp-mode.md)). Being in a fight with raid mobs does not block the teleport, so you can still warp away from a monster fight.
 - You can't use it while you're already inside your home, and you need to actually own a claim.
 - On completion you're placed at a **random safe surface spot** somewhere inside your claim (solid, dry ground with headroom) — not a fixed point, so nobody can camp your arrival.
 
